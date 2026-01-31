@@ -235,9 +235,9 @@ Created as part of internship assignment for **Rotten Grapes, Nasik**.
 ## 👨‍💻 Author
 
 **Krushna Sonawane**  
-📧 Email: your.email@example.com  
+📧 Email:sonawanekrushna830@gmail.com 
 🔗 GitHub: [@KrushnaSonawane24](https://github.com/KrushnaSonawane24)  
-🔗 LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourprofile)
+🔗 LinkedIn: [[Your LinkedIn](https://linkedin.com/in/yourprofile)](https://www.linkedin.com/in/krushna-sonawane-16442b2b8/)
 
 ## 📄 License
 
