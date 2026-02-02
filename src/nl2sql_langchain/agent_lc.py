@@ -80,35 +80,35 @@ class LangChainAgent:
     def _create_prompt_template(self) -> ChatPromptTemplate:
         """Create LangChain prompt with memory support"""
         
-        system_instructions = """You are a friendly English-speaking chatbot for a PostgreSQL database.
+        system_instructions = """You are a PostgreSQL query assistant that converts natural language to SQL.
 You must ALWAYS return valid JSON.
 Output schema:
 - kind: one of "chat" | "clarify" | "sql"
-- message: string (friendly response or clarification question)
+- message: string (concise response or clarification question)
 - sql: string (only when kind="sql", otherwise empty)
 
-Decide what to do:
-- If the user is greeting/small talk (e.g., hi/hello/hey/kaise ho), respond normally with kind="chat".
-- If the user asks to run SQL on the DB, use kind="sql" and put up to {max_statements} PostgreSQL statements in sql.
-- If the user asks INSERT/UPDATE/DELETE but provides incomplete info, ask follow-up with kind="clarify" and sql="".
-- If the user refers to a wrong table/column name, respond with kind="clarify" and ask what they meant.
-- Always write message in English, even if the user writes in Hindi/Hinglish.
+Decision logic:
+- If the user provides a greeting (e.g., hi/hello), acknowledge briefly with kind="chat".
+- If the user requests database query, output kind="sql" with valid PostgreSQL statement(s).
+- If the user requests INSERT/UPDATE/DELETE but provides incomplete info, request clarification with kind="clarify".
+- If the user refers to non-existent tables/columns, respond with kind="clarify" and suggest corrections.
+- Always respond in English, regardless of input language.
 
 SQL rules:
 {mode_rules}
 
 General rules:
-- Understand Hindi/Hinglish and typos, but respond in English.
-- Use only tables/columns that exist in the provided schema and use the exact names.
-- If user has typos or spelling mistakes, infer intended table/column names from schema.
-- Prefer explicit table qualifiers for ambiguous columns.
-- For text filters, use case/space-tolerant matching (LOWER(TRIM(col))).
-- Arithmetic is allowed: +, -, *, /, %, SUM/AVG/MIN/MAX, COUNT, CASE, COALESCE.
-- Before any arithmetic or SUM/AVG, ensure operands are numeric.
-- For division, avoid divide-by-zero using NULLIF(denominator, 0).
-- Never use SQL Server syntax like TOP; in PostgreSQL use LIMIT.
-- For INSERT/UPDATE/DELETE, prefer RETURNING * so the app can show affected rows.
-- Keep it efficient; add LIMIT for list queries."""
+- Accept input in English, Hindi, or Hinglish. Respond in English.
+- Use only tables/columns from the provided schema with exact names.
+- Infer intended table/column names from typos using schema context.
+- Use explicit table qualifiers for potentially ambiguous columns.
+- For text filters, use case-insensitive matching: LOWER(TRIM(col)).
+- Supported operations: +, -, *, /, %, SUM/AVG/MIN/MAX, COUNT, CASE, COALESCE.
+- Ensure numeric types before arithmetic operations.
+- Prevent division by zero: use NULLIF(denominator, 0).
+- Use PostgreSQL syntax: LIMIT (not SQL Server's TOP).
+- For INSERT/UPDATE/DELETE: include RETURNING * to show affected rows.
+- Add LIMIT to list queries for efficiency."""
         
         return ChatPromptTemplate.from_messages([
             ("system", system_instructions),
@@ -201,7 +201,7 @@ General rules:
                     sql="",
                     sql_statements=[],
                     results=None,
-                    answer=message or "OK."
+                    answer=message or "Acknowledged."
                 )
             
             if not raw_sql:
@@ -210,7 +210,7 @@ General rules:
                     sql="",
                     sql_statements=[],
                     results=None,
-                    answer=message or "I need more details. Please clarify."
+                    answer=message or "Please provide additional details to proceed."
                 )
         
         # Validate SQL
@@ -250,15 +250,15 @@ General rules:
         # Format answer
         stmt = classify_statement(normalized_statements[-1])
         if not execute:
-            answer = message or "Here is the SQL I generated. Review it, then execute if needed."
+            answer = message or "SQL generated. Review before execution."
         elif stmt in ("select", "with"):
             last_rows = results[-1].rows if results else []
-            answer = message or f"Returned {len(last_rows)} row(s)."
+            answer = message or f"Query returned {len(last_rows)} row(s)."
         else:
             last = results[-1] if results else None
             rc = last.rowcount if last is not None else 0
             returned = len(last.rows) if last is not None else 0
-            answer = message or f"Executed {stmt.upper()} (rowcount: {rc})."
+            answer = message or f"{stmt.upper()} executed (affected rows: {rc})."
             if returned:
                 answer = f"{answer} Returned {returned} row(s)."
         

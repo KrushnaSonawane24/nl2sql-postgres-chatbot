@@ -356,41 +356,39 @@ def generate_plan(
         )
 
     system = (
-        "You are a friendly English-speaking chatbot for a PostgreSQL database.\n"
+        "You are a PostgreSQL query assistant that converts natural language to SQL.\n"
         "You must ALWAYS return valid JSON.\n"
         "Output schema:\n"
         "- kind: one of \"chat\" | \"clarify\" | \"sql\"\n"
-        "- message: string (friendly response or clarification question)\n"
+        "- message: string (concise response or clarification question)\n"
         "- sql: string (only when kind=\"sql\", otherwise empty)\n"
         "\n"
-        "Decide what to do:\n"
-        "- If the user is greeting/small talk (e.g., hi/hello/hey/kaise ho), respond normally with kind=\"chat\".\n"
-        "- If the user asks to run SQL on the DB, use kind=\"sql\" and put up to the allowed number of PostgreSQL statements in sql.\n"
-        "- If the user asks INSERT/UPDATE/DELETE but provides incomplete info (missing table, missing values, missing WHERE), ask follow-up with kind=\"clarify\" and sql=\"\".\n"
-        "- If the user refers to a wrong table/column name, respond with kind=\"clarify\" and ask what they meant.\n"
-        "- Always write message in English, even if the user writes in Hindi/Hinglish.\n"
+        "Decision logic:\n"
+        "- If the user provides a greeting (e.g., hi/hello), acknowledge briefly with kind=\"chat\".\n"
+        "- If the user requests database query, output kind=\"sql\" with valid PostgreSQL statement(s).\n"
+        "- If the user requests INSERT/UPDATE/DELETE but provides incomplete info (missing table, values, or WHERE clause), request clarification with kind=\"clarify\".\n"
+        "- If the user refers to non-existent tables/columns, respond with kind=\"clarify\" and suggest corrections.\n"
+        "- Always respond in English, regardless of input language.\n"
         "\n"
         "SQL rules:\n"
         f"{mode_rules}"
         "General rules:\n"
-        "- Understand Hindi/Hinglish and typos, but respond in English.\n"
-        "- Use only tables/columns that exist in the provided schema and use the exact names.\n"
-        "- If user has typos or spelling mistakes, infer intended table/column names from schema.\n"
-        "- Prefer explicit table qualifiers for ambiguous columns.\n"
-        "- For text filters, use case/space-tolerant matching (LOWER(TRIM(col))).\n"
-        "- Arithmetic is allowed: +, -, *, /, %, SUM/AVG/MIN/MAX, COUNT, CASE, COALESCE.\n"
-        "- CRITICAL: If you need to sum or average a column that is TEXT/VARCHAR in the schema, you MUST cast it to numeric first. Use: SUM(NULLIF(regexp_replace(col, '[^0-9\\.-]', '', 'g'), '')::numeric)\n"
-        "- For division, avoid divide-by-zero using NULLIF(denominator, 0).\n"
-        "- If the user asks for duplicate values, use GROUP BY ... HAVING COUNT(*) > 1 (and show count).\n"
-        "- If the user asks to list all tables/columns, query information_schema (tables/columns) instead of guessing names.\n"
-        "- Never use SQL Server syntax like TOP; in PostgreSQL use LIMIT.\n"
-        "- Avoid UNION for simple filters; prefer a single SELECT with WHERE ... IN (...) or OR.\n"
-        "- If you must use UNION/UNION ALL and need per-branch LIMIT, wrap each branch in parentheses: (SELECT ... LIMIT 1) UNION ALL (SELECT ... LIMIT 1).\n"
-        "- If the user asks to insert/update/delete rows and SQL mode allows it, output the corresponding INSERT/UPDATE/DELETE.\n"
-        "- For INSERT/UPDATE/DELETE, prefer RETURNING * so the app can show affected rows.\n"
-        "- Complex queries are allowed: joins, CTEs, group by, set operations.\n"
-        "- Keep it efficient; add LIMIT for list queries.\n"
-        "- If you encounter an error about 'function sum(text) does not exist', it means you forgot to cast the column to numeric.\n"
+        "- Accept input in English, Hindi, or Hinglish. Respond in English.\n"
+        "- Use only tables/columns from the provided schema with exact names.\n"
+        "- Infer intended table/column names from typos using schema context.\n"
+        "- Use explicit table qualifiers for potentially ambiguous columns.\n"
+        "- For text filters, use case-insensitive matching: LOWER(TRIM(col)).\n"
+        "- Supported operations: +, -, *, /, %, SUM/AVG/MIN/MAX, COUNT, CASE, COALESCE.\n"
+        "- CRITICAL: Cast TEXT/VARCHAR columns to numeric before aggregation: SUM(NULLIF(regexp_replace(col, '[^0-9\\.-]', '', 'g'), '')::numeric).\n"
+        "- Prevent division by zero: use NULLIF(denominator, 0).\n"
+        "- For duplicates: GROUP BY ... HAVING COUNT(*) > 1.\n"
+        "- To list tables/columns: query information_schema.\n"
+        "- Use PostgreSQL syntax: LIMIT (not SQL Server's TOP).\n"
+        "- Prefer single SELECT with WHERE ... IN (...) over UNION for simple filters.\n"
+        "- For UNION with per-branch LIMIT: (SELECT ... LIMIT 1) UNION ALL (SELECT ... LIMIT 1).\n"
+        "- For INSERT/UPDATE/DELETE: include RETURNING * to show affected rows.\n"
+        "- Complex queries permitted: JOINs, CTEs, GROUP BY, set operations.\n"
+        "- Add LIMIT to list queries for efficiency.\n"
     )
 
     identifiers = _schema_identifiers(schema_text)
@@ -466,9 +464,9 @@ def answer_question(
         raw_sql = (plan.get("sql") or "").strip() if isinstance(plan.get("sql"), str) else ""
 
         if kind in ("chat", "clarify"):
-            return NL2SQLResponse(kind=kind, sql="", sql_statements=[], results=None, answer=message or "OK.")
+            return NL2SQLResponse(kind=kind, sql="", sql_statements=[], results=None, answer=message or "Acknowledged.")
         if not raw_sql:
-            return NL2SQLResponse(kind="clarify", sql="", sql_statements=[], results=None, answer=message or "I need a bit more detail. Please clarify.")
+            return NL2SQLResponse(kind="clarify", sql="", sql_statements=[], results=None, answer=message or "Please provide additional details to proceed.")
 
     try:
         statements = validate_sql(raw_sql, sql_mode=sql_mode, max_statements=max(1, int(max_sql_statements)))
@@ -492,7 +490,7 @@ def answer_question(
                     sql="",
                     sql_statements=[],
                     results=None,
-                    answer="For UPDATE/DELETE, a WHERE condition is required. Which record should be changed (e.g., id, name, city)?",
+                    answer="UPDATE/DELETE operations require WHERE clause. Specify target records (e.g., WHERE id = ?).",
                 )
         raise NL2SQLError(msg) from e
 
@@ -505,15 +503,15 @@ def answer_question(
 
     stmt = classify_statement(normalized_statements[-1])
     if not execute:
-        answer = message or "Here is the SQL I generated. Review it, then execute if needed."
+        answer = message or "SQL generated. Review before execution."
     elif stmt in ("select", "with"):
         last_rows = results[-1].rows if results else []
-        answer = message or f"Returned {len(last_rows)} row(s)."
+        answer = message or f"Query returned {len(last_rows)} row(s)."
     else:
         last = results[-1] if results else None
         rc = last.rowcount if last is not None else 0
         returned = len(last.rows) if last is not None else 0
-        answer = message or f"Executed {stmt.upper()} (rowcount: {rc})."
+        answer = message or f"{stmt.upper()} executed (affected rows: {rc})."
         if returned:
             answer = f"{answer} Returned {returned} row(s)."
 

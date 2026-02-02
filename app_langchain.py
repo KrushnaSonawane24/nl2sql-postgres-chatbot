@@ -22,41 +22,230 @@ from nl2sql.sql_safety import SQLMode, classify_statement
 
 load_dotenv()
 
-st.set_page_config(page_title="NL → SQL (LangChain)", layout="wide")
-st.title("Natural Language → SQL Chatbot (LangChain Version)")
-st.caption("With Built-in Conversation Memory")
+# Professional page configuration
+st.set_page_config(
+    page_title="NL2SQL - PostgreSQL Query Assistant (LangChain)",
+    page_icon="⚙️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ChatGPT-inspired dark theme CSS
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Söhne:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+    
+    /* Global dark theme */
+    .stApp {
+        background-color: #030303;
+        color: #ececf1;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    /* Main container */
+    .main .block-container {
+        padding: 3rem 1rem 1rem;
+        max-width: 48rem;
+        margin: 0 auto;
+    }
+    
+    /* Title styling */
+    h1 {
+        color: #ececf1;
+        font-weight: 600;
+        font-size: 1.5rem !important;
+        margin-bottom: 0.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #161718;
+    }
+    
+    /* Caption */
+    .stApp p {
+        color: #b4b4b4;
+    }
+    
+    /* Sidebar - ChatGPT style */
+    [data-testid="stSidebar"] {
+        background-color: #202123;
+        border-right: 1px solid #565869;
+    }
+    
+    [data-testid="stSidebar"] * {
+        color: #ececf1 !important;
+    }
+    
+    [data-testid="stSidebar"] .stMarkdown {
+        color: #ececf1;
+    }
+    
+    /* Sidebar inputs */
+    [data-testid="stSidebar"] input,
+    [data-testid="stSidebar"] select {
+        background-color: #161618 !important;
+        border: 1px solid #161718 !important;
+        color: #ececf1 !important;
+        border-radius: 6px;
+    }
+    
+    [data-testid="stSidebar"] input:focus,
+    [data-testid="stSidebar"] select:focus {
+        border-color: #10a37f !important;
+        box-shadow: 0 0 0 1px #10a37f !important;
+    }
+    
+    /* Chat messages */
+    .stChatMessage {
+        background-color: transparent;
+        padding: 1.5rem 0;
+        border-bottom: 1px solid #161718;
+    }
+    
+    [data-testid="stChatMessageContent"] {
+        background-color: transparent !important;
+        color: #ececf1;
+    }
+    
+    /* User message */
+    .stChatMessage[data-testid="user"] {
+        background-color: #030303;
+    }
+    
+    /* Assistant message */
+    .stChatMessage[data-testid="assistant"] {
+        background-color: #000000;
+    }
+    
+    /* Code blocks - GitHub dark style */
+    .stCodeBlock {
+        background-color: #0d1117 !important;
+        border: 1px solid #000000;
+        border-radius: 6px;
+        border-left: 3px solid #10a37f;
+    }
+    
+    .stCodeBlock code {
+        color: #c9d1d9 !important;
+    }
+    
+    /* Dataframes */
+    .stDataFrame {
+        background-color: #161618;
+        border: 1px solid #161718;
+        border-radius: 6px;
+    }
+    
+    .stDataFrame table {
+        color: #ececf1;
+    }
+    
+    /* Buttons - ChatGPT style */
+    .stButton button {
+        background-color: #10a37f;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        transition: background-color 0.2s;
+    }
+    
+    .stButton button:hover {
+        background-color: #1a7f64;
+    }
+    
+    /* Success/Error/Warning messages */
+    .stSuccess {
+        background-color: #1a472a;
+        border-left: 3px solid #10a37f;
+        color: #ececf1;
+    }
+    
+    .stError {
+        background-color: #4a1a1a;
+        border-left: 3px solid #ef4444;
+        color: #ececf1;
+    }
+    
+    .stWarning {
+        background-color: #4a3a1a;
+        border-left: 3px solid #f59e0b;
+        color: #ececf1;
+    }
+    
+    .stInfo {
+        background-color: #1a3a4a;
+        border-left: 3px solid #3b82f6;
+        color: #ececf1;
+    }
+    
+    /* Chat input */
+    .stChatInput {
+        background-color: #161618;
+        border-radius: 12px;
+    }
+    
+    .stChatInput input {
+        background-color: #161618 !important;
+        border: 1px solid #161718 !important;
+        color: #ececf1 !important;
+    }
+    
+    /* Expanders */
+    .streamlit-expanderHeader {
+        background-color: #161618;
+        color: #ececf1;
+        border-radius: 6px;
+    }
+    
+    /* Captions */
+    .stCaption {
+        color: #b4b4b4 !important;
+    }
+    
+    /* Dividers */
+    hr {
+        border-color: #161718;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("Natural Language to SQL Query Assistant")
+st.caption("PostgreSQL Interaction Tool with LangChain Memory")
 
 settings = load_settings()
 
 with st.sidebar:
-    st.subheader("Connection")
-    database_url = st.text_input("DATABASE_URL", value=settings.database_url, type="password")
+    st.subheader("Database Configuration")
+    database_url = st.text_input("PostgreSQL URL", value=settings.database_url, type="password", help="Connection string format: postgresql://user:pass@host:port/db")
 
-    st.subheader("LLM")
+    st.subheader("LLM Configuration")
     provider = settings.provider
     api_key = settings.api_key
     model = settings.model
-    st.caption(f"Using: {provider} ({model}). Set GEMINI_API_KEY or GROQ_API_KEY in .env.")
+    if api_key:
+        st.success(f"Provider: {provider.upper()} | Model: {model}")
+    else:
+        st.warning("API key not configured in environment")
 
-    st.subheader("Safety")
+    st.subheader("Query Safety")
     _sql_mode_options = ["read_only", "write_no_delete", "write_full"]
     _default_sql_mode = st.session_state.get("sql_mode") or "write_full"
     if _default_sql_mode not in _sql_mode_options:
         _default_sql_mode = "write_full"
     sql_mode: SQLMode = st.selectbox(
-        "SQL mode",
+        "Operation Mode",
         options=_sql_mode_options,
         index=_sql_mode_options.index(_default_sql_mode),
         key="sql_mode",
+        help="read_only: SELECT only | write_no_delete: INSERT/UPDATE | write_full: Full CRUD"
     )
     statement_timeout_ms = st.number_input(
-        "Statement timeout (ms)", min_value=1000, max_value=60000, value=settings.statement_timeout_ms, step=500
+        "Query Timeout (ms)", min_value=1000, max_value=60000, value=settings.statement_timeout_ms, step=1000
     )
-    max_rows = st.number_input("Max rows", min_value=1, max_value=2000, value=settings.max_rows, step=10)
+    max_rows = st.number_input("Result Limit", min_value=1, max_value=2000, value=settings.max_rows, step=50)
     
-    st.info("🧠 Memory: LangChain automatically remembers last 10 messages!")
-    st.caption(f"Max SQL statements per request: {settings.max_sql_statements}.")
-    st.caption("Tip: keep your API key in a local .env file (never commit it).")
+    st.info("Memory: LangChain automatically maintains conversation context (last 10 messages)")
+    st.caption(f"Max SQL statements per request: {settings.max_sql_statements}")
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -86,8 +275,8 @@ for m in st.session_state.messages:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
         if m.get("sql"):
-            with st.expander("SQL", expanded=False):
-                st.code(m["sql"], language="sql")
+            st.markdown("**Generated SQL:**")
+            st.code(m["sql"], language="sql")
         if m.get("results"):
             for i, r in enumerate(m["results"], start=1):
                 if len(m["results"]) > 1:
@@ -147,9 +336,9 @@ if prompt:
 
     with st.chat_message("assistant"):
         if not database_url:
-            st.error("Missing DATABASE_URL")
+            st.error("Database connection not configured. Please provide DATABASE_URL in sidebar.")
         elif not api_key:
-            st.error("Missing API key (set GEMINI_API_KEY or GROQ_API_KEY in .env)")
+            st.error("LLM API key not configured. Set GEMINI_API_KEY or GROQ_API_KEY in environment.")
         elif st.session_state.agent is None:
             st.error("Agent not initialized")
         else:
@@ -173,8 +362,8 @@ if prompt:
                     st.session_state.messages.append({"role": "assistant", "content": resp.answer})
                     agent.add_to_memory("assistant", resp.answer)
                 else:
-                    with st.expander("SQL", expanded=True):
-                        st.code(resp.sql, language="sql")
+                    st.markdown("**Generated SQL:**")
+                    st.code(resp.sql, language="sql")
                     
                     stmts = resp.sql_statements or []
                     all_read = all(classify_statement(s) in ("select", "with") for s in stmts) if stmts else False
